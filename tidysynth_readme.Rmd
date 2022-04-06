@@ -1,0 +1,114 @@
+---
+title: "Tidysynth run through"
+author: "Victor Yu"
+date: "06/04/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load}
+require(tidysynth)
+data("smoking")
+smoking %>% dplyr::glimpse()
+```
+
+## Generate SC
+
+```{r main}
+smoking_out <-
+  
+  smoking %>%
+  
+  # initial the synthetic control object
+  synthetic_control(outcome = cigsale, # outcome
+                    unit = state, # unit index in the panel data
+                    time = year, # time index in the panel data
+                    i_unit = "California", # unit where the intervention occurred
+                    i_time = 1988, # time period when the intervention occurred
+                    generate_placebos=T # generate placebo synthetic controls (for inference)
+                    )
+```
+
+```{r predictors}
+smoke_predictors <- smoking_out %>%
+  
+  # Generate the aggregate predictors used to fit the weights
+  
+  # average log income, retail price of cigarettes, and proportion of the
+  # population between 15 and 24 years of age from 1980 - 1988
+  generate_predictor(time_window = 1980:1988,
+                     ln_income = mean(lnincome, na.rm = T),
+                     ret_price = mean(retprice, na.rm = T),
+                     youth = mean(age15to24, na.rm = T)) %>%
+  
+  # average beer consumption in the donor pool from 1984 - 1988
+  generate_predictor(time_window = 1984:1988,
+                     beer_sales = mean(beer, na.rm = T)) %>%
+  
+  # Lagged cigarette sales 
+  generate_predictor(time_window = 1975,
+                     cigsale_1975 = cigsale) %>%
+  generate_predictor(time_window = 1980,
+                     cigsale_1980 = cigsale) %>%
+  generate_predictor(time_window = 1988,
+                     cigsale_1988 = cigsale)
+```
+
+```{r weights}
+smoke_weights <-
+  smoke_predictors %>% generate_weights(
+    optimization_window = 1970:1988,
+    # time to use in the optimization task
+    margin_ipop = .02,
+    sigf_ipop = 7,
+    bound_ipop = 6 # optimizer options
+  )
+
+```
+
+```{r sc}
+smoke_final <- smoke_weights %>% generate_control()
+```
+
+## Plots
+
+```{r plot_trend}
+smoke_final %>% plot_trends()
+```
+
+```{r plot_differences}
+smoke_final %>% plot_differences()
+```
+
+```{r plot_weights}
+smoke_final %>% plot_weights()
+```
+
+```{r balance_table}
+smoke_final %>% grab_balance_table()
+```
+
+## Placebos
+
+```{r placebos}
+smoke_final %>% plot_placebos()
+```
+
+```{r placebos MSPE}
+smoke_final %>% plot_mspe_ratio()
+```
+## Significance
+
+```{r significance}
+smoke_final %>% grab_signficance()
+```
+
+## Accessing data
+
+```{r access}
+smoke_final
+```
+
